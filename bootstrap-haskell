@@ -1,0 +1,57 @@
+#!/bin/sh
+
+_die() {
+    (>&2 printf "\\033[0;31m%s\\033[0m\\n" "$1")
+    exit 2
+}
+
+_edo()
+{
+	printf "\\033[0;35m%s\\033[0m\\n" "$*" 1>&2
+    "$@" || exit 2
+}
+
+mkdir -p "${HOME}"/.ghcup/bin || _die "\"mkdir -p ${HOME}/.ghcup/bin\" failed"
+
+if command -V "ghcup" >/dev/null 2>&1 ; then
+	if [ -z "${BOOTSTRAP_HASKELL_NO_UPGRADE}" ] ; then
+		_edo ghcup upgrade
+	fi
+else
+	_edo curl https://raw.githubusercontent.com/haskell/ghcup/master/ghcup > "${HOME}"/.ghcup/bin/ghcup
+	_edo chmod +x "${HOME}"/.ghcup/bin/ghcup
+
+	cat <<-EOF > "${HOME}"/.ghcup/env || _die "Failed to create env file"
+		export PATH="\$HOME/.cabal/bin:\$HOME/.ghcup/bin:\$PATH"
+		EOF
+	# shellcheck disable=SC1090
+	_edo . "${HOME}"/.ghcup/env
+fi
+
+# figure out which version we just installed
+# shellcheck disable=SC1090
+_edo . "${HOME}"/.ghcup/bin/ghcup
+_edo mkdir -p "${INSTALL_BASE}"
+_edo mkdir -p "${BIN_LOCATION}"
+_edo mkdir -p "${CACHE_LOCATION}"
+
+# check for available commands
+missing_commands="$(check_required_commands gcc make)"
+if [ -n "${missing_commands}" ] ; then
+	die "Following commands are required, but missing, please install: ${missing_commands}\\nYou can rerun this script after you have fixed above."
+fi
+
+rec_ghc="$(get_tool_ver_from_tag "ghc" "recommended")"
+
+if ! ghc_already_installed "${rec_ghc}" ; then
+	_edo ghcup install
+fi
+
+_edo ghcup set "${rec_ghc}"
+_edo ghcup install-cabal
+
+# FIXME workaround for https://github.com/haskell/cabal/issues/5516
+_edo mkdir -p "${HOME}/.cabal/store/ghc-${rec_ghc}/package.db"
+
+_edo cabal new-update
+_edo cabal new-install --symlink-bindir="$HOME/.cabal/bin" cabal-install

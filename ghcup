@@ -955,6 +955,8 @@ is_sourced() {
         case ${0##*/} in
             sh|dash)
                return 0 ;;
+            bootstrap-haskell)
+                return 0 ;;
        esac
    fi
 
